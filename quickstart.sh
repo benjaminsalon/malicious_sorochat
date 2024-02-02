@@ -1,5 +1,10 @@
-previewVersion=$(jq -r '.previewVersion' preview_version.json)
+previewHash=$(jq -r '.previewHash' preview_version.json)
 quickstartHash=$(jq -r '.quickstartHash' preview_version.json)
+
+previewVersion=$(echo "$previewHash" | cut -d'@' -f1)
+echo $previewVersion
+
+PREVIEW_CONTAINER_NAME="soroban-preview-${previewVersion}-malicious"
 
 #!/bin/bash
 
@@ -8,7 +13,7 @@ set -e
 case "$1" in
 standalone)
     echo "Using standalone network"
-    ARGS="--standalone" # --enable-core-artificially-accelerate-time-for-testing"
+    ARGS="--local --enable-soroban-diagnostic-events"
     STELLAR_NAME='stellar-standalone'
     LOCAL_PORT='8000'
     ;;
@@ -18,40 +23,45 @@ futurenet)
     STELLAR_NAME='stellar-futurenet'
     LOCAL_PORT='8001'
     ;;
+testnet)
+    echo "Using Testnet network"
+    ARGS="--testnet"
+    ;;
 *)
-    echo "Usage: $0 standalone|futurenet"
+    echo "Usage: $0 standalone|futurenet|testnet"
     exit 1
     ;;
 esac
 
-
 shift
+
 
 echo "1. Creating docker soroban network"
 (docker network inspect soroban-network -f '{{.Id}}' 2>/dev/null) \
   || docker network create soroban-network
 
+echo "  "
+echo "  "
 
-echo "2. Running a soroban-preview docker container"
-
-echo "Searching for a previous soroban-preview docker container"
-containerID=$(docker ps --filter=`name=soroban-preview-${previewVersion}` --all --quiet)
+echo "2. Searching for a previous soroban-preview docker container"
+containerID=$(docker ps --filter=`name=${PREVIEW_CONTAINER_NAME}` --all --quiet)
 if [[ ${containerID} ]]; then
-    echo "Start removing soroban-preview-${previewVersion}  container."
-    docker rm --force soroban-preview-${previewVersion}
-    echo "Finished removing soroban-preview-${previewVersion} container."
+    echo "Start removing ${PREVIEW_CONTAINER_NAME}  container."
+    docker rm --force ${PREVIEW_CONTAINER_NAME}
+    echo "Finished removing ${PREVIEW_CONTAINER_NAME} container."
 else
-    echo "No previous soroban-preview-${previewVersion} container was found"
+    echo "No previous ${PREVIEW_CONTAINER_NAME} container was found"
 fi
- 
+echo "  "
+echo " .. "
 
 currentDir=$(pwd)
 docker run -dti \
   --volume ${currentDir}:/workspace \
-  --name soroban-preview-${previewVersion} \
+  --name ${PREVIEW_CONTAINER_NAME} \
   --ipc=host \
   --network soroban-network \
-  esteblock/soroban-preview:${previewVersion}
+  esteblock/soroban-preview:${previewHash}
 
 
 echo "2. Running a the stellar quickstart image with name=$STELLAR_NAME"
